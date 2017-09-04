@@ -25,8 +25,13 @@ struct TemplateAction {
 	enum Action {
 		APPENDSTRING,
 		FOREACH_LOOP,
+		END_LOOP,
+		EXPRESSION,
+		CONDITIONAL,
+		END_CONDITIONAL,
+		BEGIN_BLOCK,
 		END_BLOCK,
-		EXPRESSION
+		BLOCK_PARENT
 	};
 	Action action;
 	std::string arg1;
@@ -36,134 +41,53 @@ struct TemplateAction {
 	size_t source_col;
 };
 
+struct TemplateBlock {
+	std::string name;
+	std::vector<TemplateAction> actions;
+};
+
 struct CodeSnippets {
 	bool strlocaltime;
 };
 
 struct CompileSession {
 	std::string classname;
+	std::string classname_extends;
 	std::set<std::string> cpp_includes;
 	std::vector<TemplateVariable> variables;
 	std::vector<TemplateAction> actions;
+	std::vector<TemplateBlock> blocks;
 	CodeSnippets snippets;
 	bool remove_expression_only_lines;
+	bool print_source_line_comments;
 };
 
-std::pair<std::string, std::string> TemplateCompiler::compile(const std::string & input, const std::string & classname)
+std::pair<std::string, std::string> TemplateCompiler::compile(const std::string & input, const std::string & classname) const
 {
 	CompileSession session{ classname };
 	session.remove_expression_only_lines = _remove_expression_only_lines;
+	session.print_source_line_comments = _print_source_line_comment;
 
 	ParseTemplate(input, session);
-	
+
+	for(auto& a : session.actions)
+		if(a.action == TemplateAction::APPENDSTRING)
+			a.arg1 = SanitizePlainText(a.arg1);
+	for(auto& b : session.blocks)
+		for (auto& a : b.actions)
+			if (a.action == TemplateAction::APPENDSTRING)
+				a.arg1 = SanitizePlainText(a.arg1);
+
 	if (session.snippets.strlocaltime) {
 		session.cpp_includes.insert("<chrono>");
 		session.cpp_includes.insert("<sstream>");
 		session.cpp_includes.insert("<iomanip>");
 	}
 
-	std::stringstream header;
-	for (auto& incl : session.cpp_includes) {
-		header << "#include " << incl << std::endl;
-	}
-	header << "class " << classname << std::endl;
-	header << "{" << std::endl;
-	header << TAB << "public:" << std::endl;
-	header << TAB << TAB << "std::string render() const;" << std::endl; // Main render method
-	header << TAB << TAB << "void render(std::string& str) const;" << std::endl; // Render append
-	for (auto& var : session.variables) {
-		header << TAB << TAB << "void set" << var.setterName << "(" << var.type << " " << var.name << ") { this->" << var.name << " = " << var.name << "; }" << std::endl;
-		header << TAB << TAB << var.type << " get" << var.setterName << "() const { return this->" << var.name << "; }" << std::endl;
-	}
-	header << TAB << "private:" << std::endl;
-	for (auto& var : session.variables) {
-		header << TAB << TAB << var.type << " " << var.name << "; // " << var.setterName << std::endl;
-	}
-	if (session.snippets.strlocaltime) {
-		header << TAB << TAB << "static std::string strlocaltime(time_t time, const char* fmt);" << std::endl;
-	}
-	header << "};";
+	auto header = BuildTemplateHeader(session);
+	auto impl = BuildTemplateBody(session);
 
-	std::stringstream impl;
-
-	impl << "#include \"" << classname << ".h\"" << std::endl;
-
-	// Main render method, implemented using append render
-	impl << "std::string " << classname << "::render() const" << std::endl;
-	impl << "{" << std::endl;
-	impl << TAB << "std::string res;" << std::endl;
-	impl << TAB << "this->render(res);" << std::endl;
-	impl << TAB << "return res;" << std::endl;
-	impl << "}" << std::endl;
-	impl << std::endl;
-	// Render at the end of an existing string
-	impl << "void " << classname << "::render(std::string& str) const" << std::endl;
-	impl << "{" << std::endl;
-
-	size_t total_string_size = 0;
-	for (auto& action : session.actions)
-	{
-		if (action.action == TemplateAction::APPENDSTRING)
-		{
-			action.arg1 = SanitizePlainText(action.arg1);
-			total_string_size += action.arg1.size();
-		}
-		else if (action.action == TemplateAction::EXPRESSION && action.expr_size_hint != -1)
-		{
-			total_string_size += action.expr_size_hint;
-		}
-	}
-	if (total_string_size != 0) {
-		impl << TAB << "if(str.capacity() < str.size() + " << total_string_size << ") {" << std::endl;
-		impl << TAB << TAB << "str.reserve(str.size() + " << total_string_size << ");" << std::endl;
-		impl << TAB << "}" << std::endl;
-	}
-
-	size_t indent_level = 0;
-
-	for (auto& action : session.actions) {
-		std::string indent;
-		for (size_t i = 0; i < indent_level; i++)
-			indent += TAB;
-		if (action.action == TemplateAction::APPENDSTRING) {
-			impl << indent << TAB << "// Line " << action.source_line << " Column " << action.source_col << std::endl;
-			impl << indent << TAB << "str.append(\"" << action.arg1 << "\");" << std::endl;
-		}
-		else if (action.action == TemplateAction::FOREACH_LOOP) {
-			impl << indent << TAB << "// Line " << action.source_line << " Column " << action.source_col << std::endl;
-			impl << indent << TAB << "for(auto &" << action.arg1 << ":" << action.arg2 << ")" << std::endl;
-			impl << indent << TAB << "{" << std::endl;
-			indent_level++;
-		}
-		else if (action.action == TemplateAction::END_BLOCK) {
-			impl << indent << "// Line " << action.source_line << " Column " << action.source_col << std::endl;
-			impl << indent << "}" << std::endl;
-			indent_level--;
-		}
-		else if (action.action == TemplateAction::EXPRESSION) {
-			impl << indent << TAB << "// Line " << action.source_line << " Column " << action.source_col << std::endl;
-			impl << indent << TAB << "str.append(" << action.arg1 << ");" << std::endl;
-		}
-	}
-
-	impl << "}" << std::endl;
-
-	if (session.snippets.strlocaltime) {
-		impl << "std::string " << classname << "::strlocaltime(time_t time, const char* fmt) {" << std::endl;
-		impl << TAB << "struct tm t;" << std::endl;
-		impl << TAB << "std::string s;" << std::endl;
-		impl << "#ifdef _WIN32" << std::endl;
-		impl << TAB << "localtime_s(&t, &time);" << std::endl;
-		impl << "#else" << std::endl;
-		impl << TAB << "localtime_r(&time, &t);" << std::endl;
-		impl << "#endif" << std::endl;
-		impl << TAB << "s.resize(80);" << std::endl;
-		impl << TAB << "s.resize(std::strftime((char*)s.data(), s.size(), fmt, &t));" << std::endl;
-		impl << TAB << "return s;" << std::endl;
-		impl << "}" << std::endl;
-	}
-
-	return{ header.str(), impl.str() };
+	return{ header, impl };
 }
 
 void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession & session)
@@ -174,55 +98,91 @@ void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession &
 	std::string sline;
 	std::istringstream stream(input);
 	size_t cnt_line = 0;
+	size_t in_comment_section = 0;
 	while (std::getline(stream, sline)) {
 		size_t offset = 0;
-		while(offset < sline.size()) {
-			auto pos = std::min(sline.find("{%", offset), sline.find("{{", offset));
-			if (pos == std::string::npos) {
-				actions.push_back({ TemplateAction::APPENDSTRING, sline.substr(offset) + "\n", "", -1, cnt_line, offset });
-				break;
-			}
-			bool is_cmd = sline.substr(pos, 2) == "{%";
-			auto endpos = sline.find(is_cmd?"%}":"}}", pos);
-			if (endpos == std::string::npos)
-				throw std::runtime_error("Missing end of start tag at pos " + std::to_string(pos));
-			if (pos != offset) {
-				if (trim_copy(sline.substr(endpos + 2)).empty()) {
-					if (!(session.remove_expression_only_lines && is_cmd && trim_copy(sline.substr(endpos + 2)).empty())) {
-						std::string plain = sline.substr(offset, pos - offset) + "\n";
+		while (offset < sline.size()) {
+			if (in_comment_section == 0) {
+				auto pos = std::min(sline.find("{%", offset), std::min(sline.find("{{", offset), sline.find("{#", offset)));
+				if (pos == std::string::npos) {
+					actions.push_back({ TemplateAction::APPENDSTRING, sline.substr(offset) + "\n", "", -1, cnt_line, offset });
+					break;
+				}
+				if (sline.substr(pos, 2) == "{#") {
+					in_comment_section++;
+					offset = pos + 2;
+					continue;
+				}
+
+				bool is_cmd = sline.substr(pos, 2) == "{%";
+				auto endpos = sline.find(is_cmd ? "%}" : "}}", pos);
+				if (endpos == std::string::npos)
+					throw std::runtime_error("Missing end of start tag at pos " + std::to_string(pos));
+				if (pos != offset) {
+					if (trim_copy(sline.substr(endpos + 2)).empty()) {
+						if (!(session.remove_expression_only_lines && is_cmd && trim_copy(sline.substr(endpos + 2)).empty())) {
+							std::string plain = sline.substr(offset, pos - offset) + "\n";
+							actions.push_back({ TemplateAction::APPENDSTRING, plain, "", -1, cnt_line, offset });
+						}
+					}
+					else {
+						std::string plain = sline.substr(offset, pos - offset);
 						actions.push_back({ TemplateAction::APPENDSTRING, plain, "", -1, cnt_line, offset });
 					}
 				}
+				if (is_cmd) {
+					std::string command = sline.substr(pos + 2, endpos - pos - 2);
+					auto parts = split(command, " ");
+					if (parts[0] == "variable") {
+						// Variable definition
+						variables.push_back({ parts[1], parts[2], parts[3] });
+					}
+					else if (parts[0] == "extends") {
+						session.classname_extends = parts[1];
+					}
+					else if (parts[0] == "#include") {
+						cpp_includes.insert(parts[1]);
+					}
+					else if (parts[0] == "for") {
+						actions.push_back({ TemplateAction::FOREACH_LOOP, parts[1], parts[3], -1, cnt_line, offset });
+					}
+					else if (parts[0] == "endfor") {
+						actions.push_back({ TemplateAction::END_LOOP, "", "", -1, cnt_line, offset });
+					}
+					else if (parts[0] == "if") {
+						actions.push_back({ TemplateAction::CONDITIONAL, join(" ", parts, 1), "", -1, cnt_line, offset });
+					}
+					else if (parts[0] == "endif") {
+						actions.push_back({ TemplateAction::END_CONDITIONAL, "", "", -1, cnt_line, offset });
+					}
+					else if (parts[0] == "block") {
+						actions.push_back({ TemplateAction::BEGIN_BLOCK, parts[1], "", -1, cnt_line, offset });
+					}
+					else if (parts[0] == "endblock") {
+						actions.push_back({ TemplateAction::END_BLOCK, "", "", -1, cnt_line, offset });
+					}
+					else if (parts[0] == "parent()") {
+						actions.push_back({ TemplateAction::BLOCK_PARENT, "", "", -1, cnt_line, offset });
+					}
+					offset = endpos + 2;
+				}
 				else {
-					std::string plain = sline.substr(offset, pos - offset);
-					actions.push_back({ TemplateAction::APPENDSTRING, plain, "", -1, cnt_line, offset });
+					// Variable output
+					auto expr = TemplateAction{ TemplateAction::EXPRESSION, sline.substr(pos + 2, endpos - pos - 2), "", -1, cnt_line, offset };
+					// Try to eval at compile time
+					ReplaceMacros(expr, session);
+					actions.push_back(expr);
+					offset = endpos + 2;
 				}
-			}
-			if (is_cmd) {
-				std::string command = sline.substr(pos + 2, endpos - pos - 2);
-				auto parts = split(command, " ");
-				if (parts[0] == "variable") {
-					// Variable definition
-					variables.push_back({ parts[1], parts[2], parts[3] });
-				}
-				else if (parts[0] == "#include") {
-					cpp_includes.insert(parts[1]);
-				}
-				else if (parts[0] == "for") {
-					actions.push_back({ TemplateAction::FOREACH_LOOP, parts[1], parts[3], -1, cnt_line, offset });
-				}
-				else if (parts[0] == "endfor") {
-					actions.push_back({ TemplateAction::END_BLOCK, "", "", -1, cnt_line, offset });
-				}
-				offset = endpos + 2;
 			}
 			else {
-				// Variable output
-				auto expr = TemplateAction{ TemplateAction::EXPRESSION, sline.substr(pos + 2, endpos - pos - 2), "", -1, cnt_line, offset };
-				// Try to eval at compile time
-				ReplaceMacros(expr, session);
-				actions.push_back(expr);
-				offset = endpos + 2;
+				auto pos = sline.find("#}", offset);
+				if (pos != std::string::npos) {
+					offset = pos + 2;
+					in_comment_section--;
+					continue;
+				}
+				offset = pos;
 			}
 		}
 		cnt_line++;
@@ -237,13 +197,43 @@ void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession &
 		else i++;
 	}
 
+	std::vector<size_t> blockstack;
+	for (size_t i = 0; i < actions.size();) {
+		auto& a = actions[i];
+		if (a.action == TemplateAction::BEGIN_BLOCK) {
+			blockstack.push_back(session.blocks.size());
+			session.blocks.push_back({ a.arg1 });
+			i++;
+		}
+		else if (a.action == TemplateAction::BLOCK_PARENT) {
+			if (blockstack.empty()) throw std::runtime_error("Invalid parent call");
+			a.arg1 = session.blocks[*blockstack.rbegin()].name;
+			session.blocks[*blockstack.rbegin()].actions.push_back(a);
+			actions.erase(actions.begin() + i);
+		}
+		else if (a.action == TemplateAction::END_BLOCK) {
+			if (blockstack.empty()) throw std::runtime_error("Invalid parent call");
+			blockstack.pop_back();
+			actions.erase(actions.begin() + i);
+		}
+		else if(!blockstack.empty()) {
+			session.blocks[*blockstack.rbegin()].actions.push_back(a);
+			actions.erase(actions.begin() + i);
+		}
+		else {
+			i++;
+		}
+	}
+
 	// Check for consistency
 	size_t opened_blocks = 0;
 	size_t closed_blocks = 0;
 	for (auto& e : actions) {
 		switch (e.action)
 		{
-		case TemplateAction::END_BLOCK: closed_blocks++; break;
+		case TemplateAction::END_CONDITIONAL:
+		case TemplateAction::END_LOOP: closed_blocks++; break;
+		case TemplateAction::CONDITIONAL:
 		case TemplateAction::FOREACH_LOOP: opened_blocks++; break;
 		default: break;
 		}
@@ -307,7 +297,7 @@ void TemplateCompiler::ReplaceMacros(TemplateAction& expr, CompileSession& sessi
 		expr.expr_size_hint = 11;
 	}
 	else if (trimmed == "__time__") {
-		expr.arg1 = "__TIME__" ;
+		expr.arg1 = "__TIME__";
 		expr.expr_size_hint = 8;
 	}
 	else if (trimmed == "__datetime__") {
@@ -333,4 +323,131 @@ void TemplateCompiler::ReplaceMacros(TemplateAction& expr, CompileSession& sessi
 		expr.arg1 = session.classname;
 		expr.action = TemplateAction::APPENDSTRING;
 	}
+}
+
+std::string TemplateCompiler::BuildTemplateHeader(const CompileSession & session)
+{
+	std::stringstream header;
+	for (auto& incl : session.cpp_includes) {
+		header << "#include " << incl << std::endl;
+	}
+	header << "class " << session.classname << std::endl;
+	header << "{" << std::endl;
+	header << TAB << "public:" << std::endl;
+	header << TAB << TAB << "std::string render() const;" << std::endl; // Main render method
+	header << TAB << TAB << "void render(std::string& str) const;" << std::endl; // Render append
+	for (auto& var : session.variables) {
+		header << TAB << TAB << "void set" << var.setterName << "(" << var.type << " " << var.name << ") { this->" << var.name << " = " << var.name << "; }" << std::endl;
+		header << TAB << TAB << var.type << " get" << var.setterName << "() const { return this->" << var.name << "; }" << std::endl;
+	}
+	header << TAB << "protected:" << std::endl;
+	for (auto& var : session.variables) {
+		header << TAB << TAB << var.type << " " << var.name << "; // " << var.setterName << std::endl;
+	}
+	if (session.snippets.strlocaltime) {
+		header << TAB << TAB << "static std::string strlocaltime(time_t time, const char* fmt);" << std::endl;
+	}
+
+	for (auto& a : session.actions) {
+		if (a.action == TemplateAction::BEGIN_BLOCK)
+			header << TAB << TAB << "virtual void renderBlock_" << a.arg1 << "(std::string& str) const;" << std::endl;
+	}
+	header << "};";
+	return header.str();
+}
+
+std::string TemplateCompiler::BuildTemplateBody(const CompileSession & session)
+{
+	std::stringstream impl;
+
+	impl << "#include \"" << session.classname << ".h\"" << std::endl;
+
+	// Main render method, implemented using append render
+	impl << "std::string " << session.classname << "::render() const" << std::endl;
+	impl << "{" << std::endl;
+	impl << TAB << "std::string res;" << std::endl;
+	impl << TAB << "this->render(res);" << std::endl;
+	impl << TAB << "return res;" << std::endl;
+	impl << "}" << std::endl;
+	impl << std::endl;
+	// Render at the end of an existing string
+	impl << "void " << session.classname << "::render(std::string& str) const" << std::endl;
+	impl << "{" << std::endl;
+
+	impl << BuildActionRender(session.actions, session, "");
+
+	impl << "}" << std::endl;
+
+	if (session.snippets.strlocaltime) {
+		impl << "std::string " << session.classname << R"(::strlocaltime(time_t time, const char* fmt) {
+	struct tm t;
+	std::string s;
+#ifdef _WIN32
+	localtime_s(&t, &time);
+#else
+	localtime_r(&time, &t);
+#endif
+	s.resize(80);
+	s.resize(std::strftime((char*)s.data(), s.size(), fmt, &t));
+	return s;
+})" << std::endl;
+	}
+
+	for (auto& e : session.blocks) {
+		impl << "void " << session.classname << "::renderBlock_" << e.name << "(std::string& str) const" << std::endl;
+		impl << "{" << std::endl;
+
+		impl << BuildActionRender(e.actions, session, e.name);
+
+		impl << "}" << std::endl;
+	}
+
+	return impl.str();
+}
+
+std::string TemplateCompiler::BuildActionRender(const std::vector<TemplateAction>& actions, const CompileSession& session, const std::string& block)
+{
+	std::ostringstream impl;
+	size_t indent_level = 0;
+	for (auto& action : actions) {
+		std::string indent;
+		for (size_t i = 0; i < indent_level; i++)
+			indent += TAB;
+
+		if (session.print_source_line_comments)
+			impl << indent << TAB << "// Line " << action.source_line << " Column " << action.source_col << std::endl;
+
+		if (action.action == TemplateAction::APPENDSTRING) {
+			impl << indent << TAB << "str.append(\"" << action.arg1 << "\");" << std::endl;
+		}
+		else if (action.action == TemplateAction::FOREACH_LOOP) {
+			impl << indent << TAB << "for(auto &" << action.arg1 << ":" << action.arg2 << ")" << std::endl;
+			impl << indent << TAB << "{" << std::endl;
+			indent_level++;
+		}
+		else if (action.action == TemplateAction::END_LOOP || action.action == TemplateAction::END_CONDITIONAL) {
+			impl << indent << "}" << std::endl;
+			indent_level--;
+		}
+		else if (action.action == TemplateAction::EXPRESSION) {
+			impl << indent << TAB << "str.append(" << action.arg1 << ");" << std::endl;
+		}
+		else if (action.action == TemplateAction::CONDITIONAL) {
+			impl << indent << TAB << "if( " << action.arg1 << ")" << std::endl;
+			impl << indent << TAB << "{" << std::endl;
+			indent_level++;
+		}
+		else if (action.action == TemplateAction::BEGIN_BLOCK) {
+			impl << indent << TAB << "this->renderBlock_" << action.arg1 << "(str);" << std::endl;
+		}
+		else if (action.action == TemplateAction::BLOCK_PARENT) {
+			if (!session.classname_extends.empty()) {
+				impl << indent << TAB << session.classname_extends << "::renderBlock_" << block << "(str);" << std::endl;
+			}
+			else {
+				throw std::runtime_error("There is no parent template");
+			}
+		}
+	}
+	return impl.str();
 }

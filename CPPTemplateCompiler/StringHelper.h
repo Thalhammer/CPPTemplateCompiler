@@ -66,3 +66,17 @@ static inline std::vector<std::string> split(const std::string& s, const std::st
 
 	return res;
 }
+
+static inline std::string join(const std::string& delim, const std::vector<std::string>& parts, size_t offset = 0, size_t len = size_t(-1))
+{
+	std::string res;
+	if (len == size_t(-1))
+		len = parts.size();
+	auto max = std::min(parts.size(), offset + len);
+	for (size_t i = offset; i < max; i++) {
+		res += parts[i];
+		if (i != parts.size() - 1)
+			res += delim;
+	}
+	return res;
+}

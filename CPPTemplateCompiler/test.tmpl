@@ -14,9 +14,12 @@
             <li><a href="{{ item.href }}">{{ item.caption }}</a></li>
         {% endfor %}
         </ul>
-
+        {% if navigation.size() > 0 %}
+            <h1>We have a navigation :)</h1>
+        {% endif %}
         <h1>My Webpage</h1>
         {{ a_variable }}
+        {% block testBlock %}
         Classname: {{ __classname__ }}<br>
         Compile Time: {{ __compile_time__ }}<br>
         Compile Date: {{ __compile_date__ }}<br>
@@ -27,6 +30,7 @@
         Current Time: {{ __current_time__ }}<br>
         Current Date: {{ __current_date__ }}<br>
         Current Datetime: {{ __current_datetime__ }}<br>
-		{{ std::to_string(index) }}
+        {{ std::to_string(index) }}
+        {% endblock %}
     </body>
 </html>

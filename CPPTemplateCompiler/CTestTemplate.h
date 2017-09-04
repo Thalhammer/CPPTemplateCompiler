@@ -14,9 +14,10 @@ class CTestTemplate
 		std::string getTestVariable() const { return this->a_variable; }
 		void setIndex(int index) { this->index = index; }
 		int getIndex() const { return this->index; }
-	private:
+	protected:
 		std::vector<NavItem> navigation; // NavigationItems
 		std::string a_variable; // TestVariable
 		int index; // Index
 		static std::string strlocaltime(time_t time, const char* fmt);
+		virtual void renderBlock_testBlock(std::string& str) const;
 };

@@ -49,21 +49,26 @@ int main(int argc, char** argv)
 		std::cout << std::endl;
 		std::cout << res.second << std::endl;*/
 
-		write_file(res.first, basename + ".h");
-		write_file(res.second, basename + ".cpp");
+		/*write_file(res.first, basename + ".h");
+		write_file(res.second, basename + ".cpp");*/
 
 		CTestTemplate tpl;
 		tpl.setNavigationItems({ {"http://google.de", "Google DE" }, { "http://google.com", "Google COM" }, { "http://google.at", "Google AT" } });
 		tpl.setTestVariable("Hallo");
+		tpl.render();
+		size_t run_times = 1000000;
+		std::string render;
 		auto start = std::chrono::steady_clock::now();
-		for (int i = 0; i < 10000; i++) {
+		for (int i = 0; i < run_times; i++) {
 			tpl.setIndex(i);
-			auto render = tpl.render();
+			render.clear();
+			tpl.render(render);
 			assert(render.size() != 0);
 		}
 		auto end = std::chrono::steady_clock::now();
 		auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-		std::cout << "Took " << dur.count() << " ms" << std::endl;
+		std::cout << "Took " << dur.count() << " ms total" << std::endl;
+		std::cout << "Took " << ((double)dur.count()) / run_times << " ms per run" << std::endl;
 		std::cin.get();
 	}
 	catch (const std::exception& e) {
