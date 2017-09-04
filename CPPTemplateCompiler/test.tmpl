@@ -1,0 +1,32 @@
+{% #include <vector> %}
+{% #include "NavItem.h" %}
+{% variable navigation std::vector<NavItem> NavigationItems %}
+{% variable a_variable std::string TestVariable %}
+{% variable index int Index %}
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>My Webpage</title>
+    </head>
+    <body>
+        <ul id="navigation">
+        {% for item in navigation %}
+            <li><a href="{{ item.href }}">{{ item.caption }}</a></li>
+        {% endfor %}
+        </ul>
+
+        <h1>My Webpage</h1>
+        {{ a_variable }}
+        Classname: {{ __classname__ }}<br>
+        Compile Time: {{ __compile_time__ }}<br>
+        Compile Date: {{ __compile_date__ }}<br>
+        Compile Datetime: {{ __compile_datetime__ }}<br>
+        Date: {{ __date__ }}<br>
+        Time: {{ __time__ }}<br>
+        Datetime: {{ __datetime__ }}<br>
+        Current Time: {{ __current_time__ }}<br>
+        Current Date: {{ __current_date__ }}<br>
+        Current Datetime: {{ __current_datetime__ }}<br>
+		{{ std::to_string(index) }}
+    </body>
+</html>
