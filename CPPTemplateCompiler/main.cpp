@@ -1,7 +1,6 @@
 ﻿#include <iostream>
 #include <fstream>
 #include "TemplateCompiler.h"
-#include "CTestTemplate.h"
 #include <cassert>
 #include <chrono>
 
@@ -43,33 +42,12 @@ int main(int argc, char** argv)
 
 		TemplateCompiler compiler;
 		compiler.setRemoveExpressionOnlyLines(true);
+		compiler.setPrintSourceLineComment(true);
 		auto res = compiler.compile(input, basename);
 
-		/*std::cout << res.first << std::endl;
-		std::cout << std::endl;
-		std::cout << res.second << std::endl;*/
-
-		/*write_file(res.first, basename + ".h");
-		write_file(res.second, basename + ".cpp");*/
-
-		CTestTemplate tpl;
-		tpl.setNavigationItems({ {"http://google.de", "Google DE" }, { "http://google.com", "Google COM" }, { "http://google.at", "Google AT" } });
-		tpl.setTestVariable("Hallo");
-		tpl.render();
-		size_t run_times = 1000000;
-		std::string render;
-		auto start = std::chrono::steady_clock::now();
-		for (int i = 0; i < run_times; i++) {
-			tpl.setIndex(i);
-			render.clear();
-			tpl.render(render);
-			assert(render.size() != 0);
-		}
-		auto end = std::chrono::steady_clock::now();
-		auto dur = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-		std::cout << "Took " << dur.count() << " ms total" << std::endl;
-		std::cout << "Took " << ((double)dur.count()) / run_times << " ms per run" << std::endl;
-		std::cin.get();
+		write_file(res.first, basename + ".h");
+		write_file(res.second, basename + ".cpp");
+		return 0;
 	}
 	catch (const std::exception& e) {
 		std::cerr << "Error:" << e.what() << std::endl;
