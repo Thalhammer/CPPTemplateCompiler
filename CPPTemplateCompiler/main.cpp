@@ -36,17 +36,22 @@ int main(int argc, char** argv)
 		return -1;
 	}
 	std::string templatefile = argv[1];
-	std::string basename = argv[2];
+	std::string classname = argv[2];
+	std::string outname = classname;
+	if(argc >= 4) {
+		outname = argv[3];
+	}
+
 	try {
 		auto input = read_file(templatefile);
 
 		TemplateCompiler compiler;
 		compiler.setRemoveExpressionOnlyLines(true);
 		compiler.setPrintSourceLineComment(true);
-		auto res = compiler.compile(input, basename);
+		auto res = compiler.compile(input, classname);
 
-		write_file(res.first, basename + ".h");
-		write_file(res.second, basename + ".cpp");
+		write_file(res.first, outname + ".h");
+		write_file(res.second, outname + ".cpp");
 		return 0;
 	}
 	catch (const std::exception& e) {
