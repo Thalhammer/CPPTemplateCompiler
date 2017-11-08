@@ -52,18 +52,17 @@ static inline std::vector<std::string> split(const std::string& s, const std::st
 	std::vector<std::string> res;
 	auto pos = s.find(search);
 	size_t offset = 0;
-	do {
+	while (pos != std::string::npos) {
 		auto elem = s.substr(offset, pos - offset);
 		if (!elem.empty() || !remove_empty)
 			res.push_back(elem);
 		offset = pos + search.size();
 		pos = s.find(search, offset);
-	} while (pos != std::string::npos);
+	};
 
 	std::string last = s.substr(offset, pos - offset);
 	if (!last.empty() || !remove_empty)
 		res.push_back(last);
-
 	return res;
 }
 

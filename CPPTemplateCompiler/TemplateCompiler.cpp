@@ -17,8 +17,8 @@ const std::string TAB = "\t";
 
 struct TemplateVariable {
 	std::string name;
-	std::string type;
 	std::string setterName;
+	std::string type;
 };
 
 struct TemplateAction {
@@ -48,12 +48,17 @@ struct TemplateBlock {
 
 struct CodeSnippets {
 	bool strlocaltime;
+
+	bool any() const {
+		return strlocaltime;
+	}
 };
 
 struct CompileSession {
 	std::string classname;
 	std::string classname_extends;
 	std::set<std::string> cpp_includes;
+	std::string class_namespace;
 	std::vector<TemplateVariable> variables;
 	std::vector<TemplateAction> actions;
 	std::vector<TemplateBlock> blocks;
@@ -135,10 +140,13 @@ void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession &
 					auto parts = split(command, " ");
 					if (parts[0] == "variable") {
 						// Variable definition
-						variables.push_back({ parts[1], parts[2], parts[3] });
+						variables.push_back({ parts[1], parts[2], join(" ", parts, 3) });
 					}
 					else if (parts[0] == "extends") {
 						session.classname_extends = parts[1];
+					}
+					else if (parts[0] == "namespace") {
+						session.class_namespace = parts[1];
 					}
 					else if (parts[0] == "#include") {
 						cpp_includes.insert(parts[1]);
@@ -225,21 +233,16 @@ void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession &
 		}
 	}
 
-	// Check for consistency
-	size_t opened_blocks = 0;
-	size_t closed_blocks = 0;
-	for (auto& e : actions) {
-		switch (e.action)
-		{
-		case TemplateAction::END_CONDITIONAL:
-		case TemplateAction::END_LOOP: closed_blocks++; break;
-		case TemplateAction::CONDITIONAL:
-		case TemplateAction::FOREACH_LOOP: opened_blocks++; break;
-		default: break;
-		}
+	if(!session.classname_extends.empty()) {
+		for(auto& a : actions)
+			if(a.action != TemplateAction::BEGIN_BLOCK)
+				throw std::runtime_error("Derived templates should not have actions outside of blocks");
 	}
-	if (opened_blocks != closed_blocks)
-		throw std::runtime_error("Invalid template: Opened " + std::to_string(opened_blocks) + " blocks, closed " + std::to_string(closed_blocks));
+
+	CheckActions(actions);
+	for(auto& e : session.blocks) {
+		CheckActions(e.actions);
+	}
 }
 
 std::string TemplateCompiler::SanitizePlainText(const std::string& str)
@@ -331,11 +334,20 @@ std::string TemplateCompiler::BuildTemplateHeader(const CompileSession & session
 	for (auto& incl : session.cpp_includes) {
 		header << "#include " << incl << std::endl;
 	}
-	header << "class " << session.classname << std::endl;
+	for(auto& ns : split(session.class_namespace, "::"))
+	{
+		header << "namespace " << ns << " {" << std::endl;
+	}
+	header << "class " << session.classname;
+	if(session.classname_extends.empty()) header << std::endl;
+	else header << " : public " << session.classname_extends << std::endl;
 	header << "{" << std::endl;
-	header << TAB << "public:" << std::endl;
-	header << TAB << TAB << "std::string render() const;" << std::endl; // Main render method
-	header << TAB << TAB << "void render(std::string& str) const;" << std::endl; // Render append
+	if(!session.variables.empty() || session.classname_extends.empty())
+		header << TAB << "public:" << std::endl;
+	if(session.classname_extends.empty()) {
+		header << TAB << TAB << "std::string render() const;" << std::endl; // Main render method
+		header << TAB << TAB << "void render(std::string& str) const;" << std::endl; // Render append
+	}
 	for (auto& var : session.variables) {
 		header << TAB << TAB << "void set" << var.setterName << "(" << var.type << " " << var.name << ") { this->" << var.name << " = " << var.name << "; }" << std::endl;
 		header << TAB << TAB << var.type << " get" << var.setterName << "() const { return this->" << var.name << "; }" << std::endl;
@@ -344,15 +356,25 @@ std::string TemplateCompiler::BuildTemplateHeader(const CompileSession & session
 	for (auto& var : session.variables) {
 		header << TAB << TAB << var.type << " " << var.name << "; // " << var.setterName << std::endl;
 	}
-	if (session.snippets.strlocaltime) {
-		header << TAB << TAB << "static std::string strlocaltime(time_t time, const char* fmt);" << std::endl;
-	}
-
 	for (auto& a : session.actions) {
 		if (a.action == TemplateAction::BEGIN_BLOCK)
 			header << TAB << TAB << "virtual void renderBlock_" << a.arg1 << "(std::string& str) const;" << std::endl;
 	}
-	header << "};";
+
+	if(session.snippets.any()) {
+		header << TAB << "private:" << std::endl;
+		if (session.snippets.strlocaltime) {
+			header << TAB << TAB << "static std::string strlocaltime(time_t time, const char* fmt);" << std::endl;
+		}
+	}
+
+	header << "};" << std::endl;
+	
+	for(auto& ns : split(session.class_namespace, "::"))
+	{
+		header << "} // namespace " << ns << std::endl;
+	}
+
 	return header.str();
 }
 
@@ -362,21 +384,28 @@ std::string TemplateCompiler::BuildTemplateBody(const CompileSession & session)
 
 	impl << "#include \"" << session.classname << ".h\"" << std::endl;
 
-	// Main render method, implemented using append render
-	impl << "std::string " << session.classname << "::render() const" << std::endl;
-	impl << "{" << std::endl;
-	impl << TAB << "std::string res;" << std::endl;
-	impl << TAB << "this->render(res);" << std::endl;
-	impl << TAB << "return res;" << std::endl;
-	impl << "}" << std::endl;
-	impl << std::endl;
-	// Render at the end of an existing string
-	impl << "void " << session.classname << "::render(std::string& str) const" << std::endl;
-	impl << "{" << std::endl;
+	for(auto& ns : split(session.class_namespace, "::"))
+	{
+		impl << "namespace " << ns << " {" << std::endl;
+	}
 
-	impl << BuildActionRender(session.actions, session, "");
+	if(session.classname_extends.empty()) {
+		// Main render method, implemented using append render
+		impl << "std::string " << session.classname << "::render() const" << std::endl;
+		impl << "{" << std::endl;
+		impl << TAB << "std::string res;" << std::endl;
+		impl << TAB << "this->render(res);" << std::endl;
+		impl << TAB << "return res;" << std::endl;
+		impl << "}" << std::endl;
+		impl << std::endl;
+		// Render at the end of an existing string
+		impl << "void " << session.classname << "::render(std::string& str) const" << std::endl;
+		impl << "{" << std::endl;
 
-	impl << "}" << std::endl;
+		impl << BuildActionRender(session.actions, session, "");
+
+		impl << "}" << std::endl;
+	}
 
 	if (session.snippets.strlocaltime) {
 		impl << "std::string " << session.classname << R"(::strlocaltime(time_t time, const char* fmt) {
@@ -402,7 +431,32 @@ std::string TemplateCompiler::BuildTemplateBody(const CompileSession & session)
 		impl << "}" << std::endl;
 	}
 
+	for(auto& ns : split(session.class_namespace, "::"))
+	{
+		impl << "} // namespace " << ns << std::endl;
+	}
+
 	return impl.str();
+}
+
+void TemplateCompiler::CheckActions(const std::vector<TemplateAction>& actions)
+{
+	// Check for consistency
+	size_t opened_blocks = 0;
+	size_t closed_blocks = 0;
+	for (auto& e : actions) {
+		switch (e.action)
+		{
+		case TemplateAction::END_CONDITIONAL:
+		case TemplateAction::END_LOOP: closed_blocks++; break;
+		case TemplateAction::CONDITIONAL:
+		case TemplateAction::FOREACH_LOOP: opened_blocks++; break;
+		default: break;
+		}
+	}
+
+	if (opened_blocks != closed_blocks)
+		throw std::runtime_error("Invalid template: Opened " + std::to_string(opened_blocks) + " blocks, closed " + std::to_string(closed_blocks));
 }
 
 std::string TemplateCompiler::BuildActionRender(const std::vector<TemplateAction>& actions, const CompileSession& session, const std::string& block)

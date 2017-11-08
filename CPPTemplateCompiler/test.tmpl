@@ -1,8 +1,9 @@
 {% #include <vector> %}
 {% #include "NavItem.h" %}
-{% variable navigation std::vector<NavItem> NavigationItems %}
-{% variable a_variable std::string TestVariable %}
-{% variable index int Index %}
+{% variable navigation NavigationItems const std::vector<NavItem>& %}
+{% variable a_variable TestVariable std::string %}
+{% variable index Index int %}
+{% namespace templates %}
 <!DOCTYPE html>
 <html>
     <head>

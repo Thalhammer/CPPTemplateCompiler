@@ -21,5 +21,6 @@ private:
 	static std::string BuildTemplateHeader(const CompileSession& session);
 	static std::string BuildTemplateBody(const CompileSession& session);
 
+	static void CheckActions(const std::vector<TemplateAction>& actions);
 	static std::string BuildActionRender(const std::vector<TemplateAction>& actions, const CompileSession& session, const std::string& block);
 };
