@@ -28,6 +28,8 @@ struct TemplateAction {
 		END_LOOP,
 		EXPRESSION,
 		CONDITIONAL,
+		CONDITIONAL_ELSE,
+		CONDITIONAL_ELSEIF,
 		END_CONDITIONAL,
 		BEGIN_BLOCK,
 		END_BLOCK,
@@ -159,6 +161,12 @@ void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession &
 					}
 					else if (parts[0] == "if") {
 						actions.push_back({ TemplateAction::CONDITIONAL, join(" ", parts, 1), "", -1, cnt_line, offset });
+					}
+					else if (parts[0] == "elif") {
+						actions.push_back({ TemplateAction::CONDITIONAL_ELSEIF, join(" ", parts, 1), "", -1, cnt_line, offset });
+					}
+					else if (parts[0] == "else") {
+						actions.push_back({ TemplateAction::CONDITIONAL_ELSE, "", "", -1, cnt_line, offset });
 					}
 					else if (parts[0] == "endif") {
 						actions.push_back({ TemplateAction::END_CONDITIONAL, "", "", -1, cnt_line, offset });
@@ -331,6 +339,7 @@ void TemplateCompiler::ReplaceMacros(TemplateAction& expr, CompileSession& sessi
 std::string TemplateCompiler::BuildTemplateHeader(const CompileSession & session)
 {
 	std::stringstream header;
+	header << "#pragma once" << std::endl;
 	for (auto& incl : session.cpp_includes) {
 		header << "#include " << incl << std::endl;
 	}
@@ -490,6 +499,13 @@ std::string TemplateCompiler::BuildActionRender(const std::vector<TemplateAction
 			impl << indent << TAB << "if( " << action.arg1 << ")" << std::endl;
 			impl << indent << TAB << "{" << std::endl;
 			indent_level++;
+		}
+		else if (action.action == TemplateAction::CONDITIONAL_ELSEIF) {
+			impl << indent << "} else if( " << action.arg1 << ")" << std::endl;
+			impl << indent << "{" << std::endl;
+		}
+		else if (action.action == TemplateAction::CONDITIONAL_ELSE) {
+			impl << indent << "} else {" << std::endl;
 		}
 		else if (action.action == TemplateAction::BEGIN_BLOCK) {
 			impl << indent << TAB << "this->renderBlock_" << action.arg1 << "(str);" << std::endl;
