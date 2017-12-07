@@ -59,6 +59,8 @@ struct CodeSnippets {
 struct CompileSession {
 	std::string classname;
 	std::string classname_extends;
+	std::string init_code;
+	std::string deinit_code;
 	std::set<std::string> cpp_includes;
 	std::string class_namespace;
 	std::vector<TemplateVariable> variables;
@@ -106,10 +108,12 @@ void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession &
 	std::istringstream stream(input);
 	size_t cnt_line = 0;
 	size_t in_comment_section = 0;
+	size_t in_init_section = 0;
+	size_t in_deinit_section = 0;
 	while (std::getline(stream, sline)) {
 		size_t offset = 0;
 		while (offset < sline.size()) {
-			if (in_comment_section == 0) {
+			if (in_comment_section == 0 && in_init_section == 0 && in_deinit_section == 0) {
 				auto pos = std::min(sline.find("{%", offset), std::min(sline.find("{{", offset), sline.find("{#", offset)));
 				if (pos == std::string::npos) {
 					actions.push_back({ TemplateAction::APPENDSTRING, sline.substr(offset) + "\n", "", -1, cnt_line, offset });
@@ -180,6 +184,12 @@ void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession &
 					else if (parts[0] == "parent()") {
 						actions.push_back({ TemplateAction::BLOCK_PARENT, "", "", -1, cnt_line, offset });
 					}
+					else if (parts[0] == "init") {
+						in_init_section++;
+					}
+					else if (parts[0] == "deinit") {
+						in_deinit_section++;
+					}
 					offset = endpos + 2;
 				}
 				else {
@@ -192,13 +202,43 @@ void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession &
 				}
 			}
 			else {
-				auto pos = sline.find("#}", offset);
-				if (pos != std::string::npos) {
-					offset = pos + 2;
-					in_comment_section--;
-					continue;
+				if(in_comment_section != 0) {
+					auto pos = sline.find("#}", offset);
+					if (pos != std::string::npos) {
+						offset = pos + 2;
+						in_comment_section--;
+						continue;
+					}
+					offset = pos;
 				}
-				offset = pos;
+				if(in_init_section != 0 || in_deinit_section != 0) {
+					auto pos = sline.find("{%", offset);
+					bool is_end = false;
+					if (pos != std::string::npos) {
+						auto moffset = pos + 2;
+						auto endpos = sline.find("%}", moffset);
+						if(endpos != std::string::npos)
+						{
+							auto parts = split(sline.substr(moffset, endpos - moffset), " ");
+							if(parts.size() == 1 && parts[0] == (in_init_section != 0 ? "endinit" : "enddeinit")) {
+								is_end = true;
+							}
+							offset = endpos + 2;
+						} else {
+							offset = moffset;
+						}
+					}
+					if(!is_end) {
+						if(in_init_section != 0)
+							session.init_code += sline.substr(offset) + "\n";
+						else session.deinit_code += sline.substr(offset) + "\n";
+						offset = sline.size();
+					} else {
+						if(in_init_section != 0)
+							in_init_section--;
+						else in_deinit_section--;
+					}
+				}
 			}
 		}
 		cnt_line++;
@@ -351,8 +391,9 @@ std::string TemplateCompiler::BuildTemplateHeader(const CompileSession & session
 	if(session.classname_extends.empty()) header << std::endl;
 	else header << " : public " << session.classname_extends << std::endl;
 	header << "{" << std::endl;
-	if(!session.variables.empty() || session.classname_extends.empty())
-		header << TAB << "public:" << std::endl;
+	header << TAB << "public:" << std::endl;
+	header << TAB << TAB << session.classname << "();" << std::endl;
+	header << TAB << TAB << "virtual ~" << session.classname << "();" << std::endl;
 	if(session.classname_extends.empty()) {
 		header << TAB << TAB << "std::string render() const;" << std::endl; // Main render method
 		header << TAB << TAB << "void render(std::string& str) const;" << std::endl; // Render append
@@ -389,6 +430,7 @@ std::string TemplateCompiler::BuildTemplateHeader(const CompileSession & session
 
 std::string TemplateCompiler::BuildTemplateBody(const CompileSession & session)
 {
+	std::string line;
 	std::stringstream impl;
 
 	impl << "#include \"" << session.classname << ".h\"" << std::endl;
@@ -397,6 +439,21 @@ std::string TemplateCompiler::BuildTemplateBody(const CompileSession & session)
 	{
 		impl << "namespace " << ns << " {" << std::endl;
 	}
+
+	impl << std::endl;
+
+	impl << session.classname << "::" << session.classname << "()" << std::endl;
+	impl << "{" << std::endl;
+	std::istringstream iss(session.init_code);
+	while(std::getline(iss, line)) impl << TAB << line << std::endl;
+	impl << "}" << std::endl;
+	impl << std::endl;
+	impl << session.classname << "::~" << session.classname << "()" << std::endl;
+	impl << "{" << std::endl;
+	iss = std::istringstream(session.deinit_code);
+	while(std::getline(iss, line)) impl << TAB << line << std::endl;
+	impl << "}" << std::endl;
+	impl << std::endl;
 
 	if(session.classname_extends.empty()) {
 		// Main render method, implemented using append render
