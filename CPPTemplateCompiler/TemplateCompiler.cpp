@@ -62,6 +62,7 @@ struct CompileSession {
 	std::string init_code;
 	std::string deinit_code;
 	std::set<std::string> cpp_includes;
+	std::set<std::string> cpp_impl_includes;
 	std::string class_namespace;
 	std::vector<TemplateVariable> variables;
 	std::vector<TemplateAction> actions;
@@ -88,9 +89,9 @@ std::pair<std::string, std::string> TemplateCompiler::compile(const std::string 
 				a.arg1 = SanitizePlainText(a.arg1);
 
 	if (session.snippets.strlocaltime) {
-		session.cpp_includes.insert("<chrono>");
-		session.cpp_includes.insert("<sstream>");
-		session.cpp_includes.insert("<iomanip>");
+		session.cpp_impl_includes.insert("<chrono>");
+		session.cpp_impl_includes.insert("<sstream>");
+		session.cpp_impl_includes.insert("<iomanip>");
 	}
 
 	auto header = BuildTemplateHeader(session);
@@ -104,6 +105,7 @@ void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession &
 	auto& actions = session.actions;
 	auto& variables = session.variables;
 	auto& cpp_includes = session.cpp_includes;
+	auto& cpp_impl_includes = session.cpp_impl_includes;
 	std::string sline;
 	std::istringstream stream(input);
 	size_t cnt_line = 0;
@@ -156,6 +158,9 @@ void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession &
 					}
 					else if (parts[0] == "#include") {
 						cpp_includes.insert(parts[1]);
+					}
+					else if (parts[0] == "#include_impl") {
+						cpp_impl_includes.insert(parts[1]);
 					}
 					else if (parts[0] == "for") {
 						actions.push_back({ TemplateAction::FOREACH_LOOP, parts[1], parts[3], -1, cnt_line, offset });

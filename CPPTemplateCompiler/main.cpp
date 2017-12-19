@@ -28,26 +28,89 @@ void write_file(const std::string& data, const std::string& fname)
 	file.close();
 }
 
-int main(int argc, char** argv)
+class arg_parser {
+	int _cidx;
+	int _argc;
+	const char** _argv;
+	public:
+		arg_parser(int argc, const char** argv)
+			: _cidx(1), _argc(argc), _argv(argv)
+		{}
+
+		std::string next() {
+			if(_cidx < _argc) {
+				auto a = _argv[_cidx];
+				_cidx++;
+				return a;
+			}
+			throw std::runtime_error("Missing argument");
+		}
+
+		std::string peek() const {
+			if(_cidx < _argc)
+				return _argv[_cidx];
+			throw std::runtime_error("Missing argument");
+		}
+
+		bool done() const {
+			return _cidx >= _argc;
+		}
+};
+
+int main(int argc, const char** argv)
 {
-	if (argc < 3)
-	{
-		std::cerr << argv[0] << " <inputtemplate> <classname>" << std::endl;
+	std::string templatefile;
+	std::string classname;
+	std::string outname;
+	bool remove_expression_only_lines = false;
+	bool print_source_line = false;
+
+	std::vector<std::string> posargs;
+	try {
+		arg_parser parse(argc, argv);
+		while(!parse.done()) {
+			std::string p = parse.next();
+			if(p.size() > 1 && p[0] == '-') {
+				if(p == "-o") {
+					outname = parse.next();
+				} else if(p == "-r")
+					remove_expression_only_lines = true;
+				else if(p == "--source-lines")
+					print_source_line = true;
+				else throw std::runtime_error("Unknown arg:" + p);
+			} else {
+				posargs.push_back(p);
+			}
+		}
+		if(templatefile.empty()) {
+			if(posargs.size() < 1)
+				throw std::runtime_error("Missing arg");
+			templatefile = posargs[0];
+			posargs.erase(posargs.begin());
+		}
+		if(classname.empty()) {
+			if(posargs.size() < 1)
+				throw std::runtime_error("Missing arg");
+			classname = posargs[0];
+			posargs.erase(posargs.begin());
+		}
+		if(outname.empty()) {
+			if(posargs.size() < 1)
+				throw std::runtime_error("Missing arg");
+			outname = posargs[0];
+			posargs.erase(posargs.begin());
+		}
+	}catch(const std::exception& e) {
+		std::cerr << e.what() << std::endl;
 		return -1;
-	}
-	std::string templatefile = argv[1];
-	std::string classname = argv[2];
-	std::string outname = classname;
-	if(argc >= 4) {
-		outname = argv[3];
 	}
 
 	try {
 		auto input = read_file(templatefile);
 
 		TemplateCompiler compiler;
-		compiler.setRemoveExpressionOnlyLines(true);
-		compiler.setPrintSourceLineComment(true);
+		compiler.setRemoveExpressionOnlyLines(remove_expression_only_lines);
+		compiler.setPrintSourceLineComment(print_source_line);
 		auto res = compiler.compile(input, classname);
 
 		write_file(res.first, outname + ".h");
