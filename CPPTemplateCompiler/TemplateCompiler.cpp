@@ -65,6 +65,7 @@ struct CompileSession {
 	std::set<std::string> cpp_impl_includes;
 	std::string class_namespace;
 	std::vector<TemplateVariable> variables;
+	std::vector<TemplateVariable> params;
 	std::vector<TemplateAction> actions;
 	std::vector<TemplateBlock> blocks;
 	CodeSnippets snippets;
@@ -93,6 +94,8 @@ std::pair<std::string, std::string> TemplateCompiler::compile(const std::string 
 		session.cpp_impl_includes.insert("<sstream>");
 		session.cpp_impl_includes.insert("<iomanip>");
 	}
+	session.cpp_includes.insert("<string>");
+	session.cpp_includes.insert("<map>");
 
 	auto header = BuildTemplateHeader(session);
 	auto impl = BuildTemplateBody(session);
@@ -147,8 +150,10 @@ void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession &
 					std::string command = sline.substr(pos + 2, endpos - pos - 2);
 					auto parts = split(command, " ");
 					if (parts[0] == "variable") {
-						// Variable definition
 						variables.push_back({ parts[1], parts[2], join(" ", parts, 3) });
+					}
+					else if (parts[0] == "param") {
+						session.params.push_back({ parts[1], "", join(" ", parts, 2) });
 					}
 					else if (parts[0] == "extends") {
 						session.classname_extends = parts[1];
@@ -388,6 +393,19 @@ std::string TemplateCompiler::BuildTemplateHeader(const CompileSession & session
 	for (auto& incl : session.cpp_includes) {
 		header << "#include " << incl << std::endl;
 	}
+	header << "#if __cpp_lib_any" << std::endl;
+	header << "#include <any>" << std::endl;
+	header << "namespace tmpl {" << std::endl;
+	header << "using std::any;" << std::endl;
+	header << "using std::any_cast;" << std::endl;
+	header << "}" << std::endl;
+	header << "#else" << std::endl;
+	header << "#include \"any.h\"" << std::endl;
+	header << "namespace tmpl {" << std::endl;
+	header << "using linb::any;" << std::endl;
+	header << "using linb::any_cast;" << std::endl;
+	header << "}" << std::endl;
+	header << "#endif" << std::endl;
 	for(auto& ns : split(session.class_namespace, "::"))
 	{
 		header << "namespace " << ns << " {" << std::endl;
@@ -400,8 +418,8 @@ std::string TemplateCompiler::BuildTemplateHeader(const CompileSession & session
 	header << TAB << TAB << session.classname << "();" << std::endl;
 	header << TAB << TAB << "virtual ~" << session.classname << "();" << std::endl;
 	if(session.classname_extends.empty()) {
-		header << TAB << TAB << "std::string render() const;" << std::endl; // Main render method
-		header << TAB << TAB << "void render(std::string& str) const;" << std::endl; // Render append
+		header << TAB << TAB << "std::string render(std::map<std::string, tmpl::any>& params) const;" << std::endl; // Main render method
+		header << TAB << TAB << "void render(std::string& str, std::map<std::string, tmpl::any>& params) const;" << std::endl; // Render append
 	}
 	for (auto& var : session.variables) {
 		header << TAB << TAB << "void set" << var.setterName << "(" << var.type << " " << var.name << ") { this->" << var.name << " = " << var.name << "; }" << std::endl;
@@ -413,7 +431,7 @@ std::string TemplateCompiler::BuildTemplateHeader(const CompileSession & session
 	}
 	for (auto& a : session.actions) {
 		if (a.action == TemplateAction::BEGIN_BLOCK)
-			header << TAB << TAB << "virtual void renderBlock_" << a.arg1 << "(std::string& str) const;" << std::endl;
+			header << TAB << TAB << "virtual void renderBlock_" << a.arg1 << "(std::string& str, std::map<std::string, tmpl::any>& params) const;" << std::endl;
 	}
 
 	if(session.snippets.any()) {
@@ -439,6 +457,9 @@ std::string TemplateCompiler::BuildTemplateBody(const CompileSession & session)
 	std::stringstream impl;
 
 	impl << "#include \"" << session.classname << ".h\"" << std::endl;
+	for(auto& s : session.cpp_impl_includes) {
+		impl << "#include " << s << std::endl;
+	}
 
 	for(auto& ns : split(session.class_namespace, "::"))
 	{
@@ -462,15 +483,15 @@ std::string TemplateCompiler::BuildTemplateBody(const CompileSession & session)
 
 	if(session.classname_extends.empty()) {
 		// Main render method, implemented using append render
-		impl << "std::string " << session.classname << "::render() const" << std::endl;
+		impl << "std::string " << session.classname << "::render(std::map<std::string, tmpl::any>& params) const" << std::endl;
 		impl << "{" << std::endl;
 		impl << TAB << "std::string res;" << std::endl;
-		impl << TAB << "this->render(res);" << std::endl;
+		impl << TAB << "this->render(res, params);" << std::endl;
 		impl << TAB << "return res;" << std::endl;
 		impl << "}" << std::endl;
 		impl << std::endl;
 		// Render at the end of an existing string
-		impl << "void " << session.classname << "::render(std::string& str) const" << std::endl;
+		impl << "void " << session.classname << "::render(std::string& str, std::map<std::string, tmpl::any>& params) const" << std::endl;
 		impl << "{" << std::endl;
 
 		impl << BuildActionRender(session.actions, session, "");
@@ -494,7 +515,7 @@ std::string TemplateCompiler::BuildTemplateBody(const CompileSession & session)
 	}
 
 	for (auto& e : session.blocks) {
-		impl << "void " << session.classname << "::renderBlock_" << e.name << "(std::string& str) const" << std::endl;
+		impl << "void " << session.classname << "::renderBlock_" << e.name << "(std::string& str, std::map<std::string, tmpl::any>& params) const" << std::endl;
 		impl << "{" << std::endl;
 
 		impl << BuildActionRender(e.actions, session, e.name);
@@ -533,6 +554,11 @@ void TemplateCompiler::CheckActions(const std::vector<TemplateAction>& actions)
 std::string TemplateCompiler::BuildActionRender(const std::vector<TemplateAction>& actions, const CompileSession& session, const std::string& block)
 {
 	std::ostringstream impl;
+
+	for(auto& var : session.params) {
+		impl << TAB << var.type << "& " << var.name << " = tmpl::any_cast<" << var.type << "&>(params.at(\"" << var.name << "\"));" << std::endl;
+	}
+
 	size_t indent_level = 0;
 	for (auto& action : actions) {
 		std::string indent;
@@ -570,11 +596,11 @@ std::string TemplateCompiler::BuildActionRender(const std::vector<TemplateAction
 			impl << indent << "} else {" << std::endl;
 		}
 		else if (action.action == TemplateAction::BEGIN_BLOCK) {
-			impl << indent << TAB << "this->renderBlock_" << action.arg1 << "(str);" << std::endl;
+			impl << indent << TAB << "this->renderBlock_" << action.arg1 << "(str, params);" << std::endl;
 		}
 		else if (action.action == TemplateAction::BLOCK_PARENT) {
 			if (!session.classname_extends.empty()) {
-				impl << indent << TAB << session.classname_extends << "::renderBlock_" << block << "(str);" << std::endl;
+				impl << indent << TAB << session.classname_extends << "::renderBlock_" << block << "(str, params);" << std::endl;
 			}
 			else {
 				throw std::runtime_error("There is no parent template");

@@ -1,8 +1,7 @@
 {% #include <vector> %}
-{% #include "NavItem.h" %}
-{% variable navigation NavigationItems const std::vector<NavItem>& %}
 {% variable a_variable TestVariable std::string %}
 {% variable index Index int %}
+{% param idx int %}
 {% namespace templates %}
 <!DOCTYPE html>
 <html>
@@ -11,13 +10,7 @@
     </head>
     <body>
         <ul id="navigation">
-        {% for item in navigation %}
-            <li><a href="{{ item.href }}">{{ item.caption }}</a></li>
-        {% endfor %}
         </ul>
-        {% if navigation.size() > 0 %}
-            <h1>We have a navigation :)</h1>
-        {% endif %}
         <h1>My Webpage</h1>
         {{ a_variable }}
         {% block testBlock %}

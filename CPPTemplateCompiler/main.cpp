@@ -95,10 +95,12 @@ int main(int argc, const char** argv)
 			posargs.erase(posargs.begin());
 		}
 		if(outname.empty()) {
-			if(posargs.size() < 1)
-				throw std::runtime_error("Missing arg");
-			outname = posargs[0];
-			posargs.erase(posargs.begin());
+			if(posargs.size() < 1) {
+				outname = classname;
+			} else {
+				outname = posargs[0];
+				posargs.erase(posargs.begin());
+			}
 		}
 	}catch(const std::exception& e) {
 		std::cerr << e.what() << std::endl;
