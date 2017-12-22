@@ -1,8 +1,21 @@
 {% #include <vector> %}
+{% #include_impl <iostream> %}
 {% variable a_variable TestVariable std::string %}
 {% variable index Index int %}
 {% param idx int %}
 {% namespace templates %}
+{% init %}
+std::cout<< "template init" << std::endl;
+{% endinit %}
+{% deinit %}
+std::cout<< "template deinit" << std::endl;
+{% enddeinit %}
+{% prerender %}
+std::cout<< "template prerender" << std::endl;
+{% endprerender %}
+{% postrender %}
+std::cout<< "template postrender" << std::endl;
+{% endpostrender %}
 <!DOCTYPE html>
 <html>
     <head>

@@ -1,6 +1,6 @@
 TMPLS = $(shell find . -name "*.tmpl")
 SRC = $(shell find . -name '*.cpp') $(shell find . -name '*.cc') $(shell find . -name '*.c')
-EXCLUDE_SRC = $(TMPLS:%.tmpl=%.cpp)
+EXCLUDE_SRC = $(TMPLS:%.tmpl=%.cpp) ./main_test.cpp
 FSRC = $(filter-out $(EXCLUDE_SRC), $(SRC))
 OBJ = $(FSRC:=.o)
 

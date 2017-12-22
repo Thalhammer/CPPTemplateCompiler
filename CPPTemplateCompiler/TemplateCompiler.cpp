@@ -59,8 +59,7 @@ struct CodeSnippets {
 struct CompileSession {
 	std::string classname;
 	std::string classname_extends;
-	std::string init_code;
-	std::string deinit_code;
+	std::map<std::string, std::string> code_blocks;
 	std::set<std::string> cpp_includes;
 	std::set<std::string> cpp_impl_includes;
 	std::string class_namespace;
@@ -113,12 +112,12 @@ void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession &
 	std::istringstream stream(input);
 	size_t cnt_line = 0;
 	size_t in_comment_section = 0;
-	size_t in_init_section = 0;
-	size_t in_deinit_section = 0;
+	size_t in_code_section = 0;
+	std::string code_section_name;
 	while (std::getline(stream, sline)) {
 		size_t offset = 0;
 		while (offset < sline.size()) {
-			if (in_comment_section == 0 && in_init_section == 0 && in_deinit_section == 0) {
+			if (in_comment_section == 0 && in_code_section == 0) {
 				auto pos = std::min(sline.find("{%", offset), std::min(sline.find("{{", offset), sline.find("{#", offset)));
 				if (pos == std::string::npos) {
 					actions.push_back({ TemplateAction::APPENDSTRING, sline.substr(offset) + "\n", "", -1, cnt_line, offset });
@@ -194,11 +193,9 @@ void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession &
 					else if (parts[0] == "parent()") {
 						actions.push_back({ TemplateAction::BLOCK_PARENT, "", "", -1, cnt_line, offset });
 					}
-					else if (parts[0] == "init") {
-						in_init_section++;
-					}
-					else if (parts[0] == "deinit") {
-						in_deinit_section++;
+					else if (parts[0] == "init" || parts[0] == "deinit" || parts[0] == "prerender" || parts[0] == "postrender") {
+						in_code_section++;
+						code_section_name = parts[0];
 					}
 					offset = endpos + 2;
 				}
@@ -221,7 +218,7 @@ void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession &
 					}
 					offset = pos;
 				}
-				if(in_init_section != 0 || in_deinit_section != 0) {
+				if(in_code_section != 0) {
 					auto pos = sline.find("{%", offset);
 					bool is_end = false;
 					if (pos != std::string::npos) {
@@ -230,7 +227,7 @@ void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession &
 						if(endpos != std::string::npos)
 						{
 							auto parts = split(sline.substr(moffset, endpos - moffset), " ");
-							if(parts.size() == 1 && parts[0] == (in_init_section != 0 ? "endinit" : "enddeinit")) {
+							if(parts.size() == 1 && parts[0] == "end" + code_section_name) {
 								is_end = true;
 							}
 							offset = endpos + 2;
@@ -239,14 +236,10 @@ void TemplateCompiler::ParseTemplate(const std::string & input, CompileSession &
 						}
 					}
 					if(!is_end) {
-						if(in_init_section != 0)
-							session.init_code += sline.substr(offset) + "\n";
-						else session.deinit_code += sline.substr(offset) + "\n";
+						session.code_blocks[code_section_name] += sline.substr(offset) + "\n";
 						offset = sline.size();
 					} else {
-						if(in_init_section != 0)
-							in_init_section--;
-						else in_deinit_section--;
+						in_code_section--;
 					}
 				}
 			}
@@ -415,11 +408,13 @@ std::string TemplateCompiler::BuildTemplateHeader(const CompileSession & session
 	else header << " : public " << session.classname_extends << std::endl;
 	header << "{" << std::endl;
 	header << TAB << "public:" << std::endl;
+	header << TAB << TAB << "typedef std::map<std::string, tmpl::any> params_t;" << std::endl;
+	header << std::endl;
 	header << TAB << TAB << session.classname << "();" << std::endl;
 	header << TAB << TAB << "virtual ~" << session.classname << "();" << std::endl;
 	if(session.classname_extends.empty()) {
-		header << TAB << TAB << "std::string render(std::map<std::string, tmpl::any>& params) const;" << std::endl; // Main render method
-		header << TAB << TAB << "void render(std::string& str, std::map<std::string, tmpl::any>& params) const;" << std::endl; // Render append
+		header << TAB << TAB << "std::string render(params_t& params) const;" << std::endl; // Main render method
+		header << TAB << TAB << "void render(std::string& str, params_t& params) const;" << std::endl; // Render append
 	}
 	for (auto& var : session.variables) {
 		header << TAB << TAB << "void set" << var.setterName << "(" << var.type << " " << var.name << ") { this->" << var.name << " = " << var.name << "; }" << std::endl;
@@ -429,9 +424,14 @@ std::string TemplateCompiler::BuildTemplateHeader(const CompileSession & session
 	for (auto& var : session.variables) {
 		header << TAB << TAB << var.type << " " << var.name << "; // " << var.setterName << std::endl;
 	}
+	header << std::endl;
+	// Code handlers
+	header << TAB << TAB << "virtual void prerender(params_t& params) const;" << std::endl;
+	header << TAB << TAB << "virtual void postrender(params_t& params) const;" << std::endl;
+
 	for (auto& a : session.actions) {
 		if (a.action == TemplateAction::BEGIN_BLOCK)
-			header << TAB << TAB << "virtual void renderBlock_" << a.arg1 << "(std::string& str, std::map<std::string, tmpl::any>& params) const;" << std::endl;
+			header << TAB << TAB << "virtual void renderBlock_" << a.arg1 << "(std::string& str, params_t& params) const;" << std::endl;
 	}
 
 	if(session.snippets.any()) {
@@ -470,20 +470,24 @@ std::string TemplateCompiler::BuildTemplateBody(const CompileSession & session)
 
 	impl << session.classname << "::" << session.classname << "()" << std::endl;
 	impl << "{" << std::endl;
-	std::istringstream iss(session.init_code);
-	while(std::getline(iss, line)) impl << TAB << line << std::endl;
+	if(session.code_blocks.count("init") != 0) {
+		std::istringstream iss(session.code_blocks.at("init"));
+		while(std::getline(iss, line)) impl << TAB << line << std::endl;
+	}
 	impl << "}" << std::endl;
 	impl << std::endl;
 	impl << session.classname << "::~" << session.classname << "()" << std::endl;
 	impl << "{" << std::endl;
-	iss = std::istringstream(session.deinit_code);
-	while(std::getline(iss, line)) impl << TAB << line << std::endl;
+	if(session.code_blocks.count("deinit") != 0) {
+		std::istringstream iss(session.code_blocks.at("deinit"));
+		while(std::getline(iss, line)) impl << TAB << line << std::endl;
+	}
 	impl << "}" << std::endl;
 	impl << std::endl;
 
 	if(session.classname_extends.empty()) {
 		// Main render method, implemented using append render
-		impl << "std::string " << session.classname << "::render(std::map<std::string, tmpl::any>& params) const" << std::endl;
+		impl << "std::string " << session.classname << "::render(params_t& params) const" << std::endl;
 		impl << "{" << std::endl;
 		impl << TAB << "std::string res;" << std::endl;
 		impl << TAB << "this->render(res, params);" << std::endl;
@@ -491,12 +495,15 @@ std::string TemplateCompiler::BuildTemplateBody(const CompileSession & session)
 		impl << "}" << std::endl;
 		impl << std::endl;
 		// Render at the end of an existing string
-		impl << "void " << session.classname << "::render(std::string& str, std::map<std::string, tmpl::any>& params) const" << std::endl;
+		impl << "void " << session.classname << "::render(std::string& str, params_t& params) const" << std::endl;
 		impl << "{" << std::endl;
+		impl << TAB << "this->prerender(params);" << std::endl;
 
 		impl << BuildActionRender(session.actions, session, "");
 
+		impl << TAB << "this->postrender(params);" << std::endl;
 		impl << "}" << std::endl;
+		impl << std::endl;
 	}
 
 	if (session.snippets.strlocaltime) {
@@ -512,15 +519,35 @@ std::string TemplateCompiler::BuildTemplateBody(const CompileSession & session)
 	s.resize(std::strftime((char*)s.data(), s.size(), fmt, &t));
 	return s;
 })" << std::endl;
+		impl << std::endl;
 	}
 
+	impl << "void " << session.classname << "::prerender(params_t& params) const" << std::endl;
+	impl << "{" << std::endl;
+	if(session.code_blocks.count("prerender") != 0) {
+		std::istringstream iss(session.code_blocks.at("prerender"));
+		while(std::getline(iss, line)) impl << TAB << line << std::endl;
+	}
+	impl << "}" << std::endl;
+	impl << std::endl;
+
+	impl << "void " << session.classname << "::postrender(params_t& params) const" << std::endl;
+	impl << "{" << std::endl;
+	if(session.code_blocks.count("postrender") != 0) {
+		std::istringstream iss(session.code_blocks.at("postrender"));
+		while(std::getline(iss, line)) impl << TAB << line << std::endl;
+	}
+	impl << "}" << std::endl;
+	impl << std::endl;
+
 	for (auto& e : session.blocks) {
-		impl << "void " << session.classname << "::renderBlock_" << e.name << "(std::string& str, std::map<std::string, tmpl::any>& params) const" << std::endl;
+		impl << "void " << session.classname << "::renderBlock_" << e.name << "(std::string& str, params_t& params) const" << std::endl;
 		impl << "{" << std::endl;
 
 		impl << BuildActionRender(e.actions, session, e.name);
 
 		impl << "}" << std::endl;
+		impl << std::endl;
 	}
 
 	for(auto& ns : split(session.class_namespace, "::"))
@@ -557,6 +584,7 @@ std::string TemplateCompiler::BuildActionRender(const std::vector<TemplateAction
 
 	for(auto& var : session.params) {
 		impl << TAB << var.type << "& " << var.name << " = tmpl::any_cast<" << var.type << "&>(params.at(\"" << var.name << "\"));" << std::endl;
+		impl << TAB << "(void)" << var.name << "; // Silence warnings if variable is not used in this block" << std::endl;
 	}
 
 	size_t indent_level = 0;
