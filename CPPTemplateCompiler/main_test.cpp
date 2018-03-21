@@ -1,15 +1,10 @@
+﻿#include "test_ext.h"
 #include <iostream>
-#include "test.h"
 
-int main() {
-	std::cout<< "main" << std::endl;
-	{
-		templates::test tmpl;
-		std::cout << "main pre render" <<std::endl;
-		templates::test::params_t params;
-		params["idx"] = int(10);
-		tmpl.render(params);
-		std::cout << "main post render" << std::endl;
-	}
-	std::cout << "main end" << std::endl;
+int main(int argc, const char** argv) {
+	templates::test_ext t;
+	templates::test_ext::params p;
+	p.idx = 1;
+	std::cout << t.render(p) << std::endl;
+	return 0;
 }

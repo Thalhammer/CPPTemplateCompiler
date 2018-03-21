@@ -286,3 +286,11 @@ __pycache__/
 *.btm.cs
 *.odx.cs
 *.xsd.cs
+
+# Linux build output
+*.o
+.deps
+/CPPTemplateCompiler/cpptemplate
+
+# VS Code config
+.vscode
