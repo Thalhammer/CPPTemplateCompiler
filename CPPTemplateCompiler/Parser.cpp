@@ -217,7 +217,8 @@ namespace cpptemplate {
 						throw std::runtime_error("parent call is only supported in extending templates");
 					} else {
 						auto node = BuildNode(it, tokens.end());
-						block->add_node(node);
+						if(node)
+							block->add_node(node);
 					}
 				}
 				ptr->add_block(block);
@@ -255,7 +256,8 @@ namespace cpptemplate {
 				it++;
 			} else {
 				auto node = BuildNode(it, tokens.end());
-				ptr->add_node(node);
+				if(node)
+					ptr->add_node(node);
 			}
 		}
 		return ptr;
@@ -275,7 +277,8 @@ namespace cpptemplate {
 						throw std::runtime_error("parent call is only supported in extending templates");
 					} else {
 						auto node = BuildNode(it, tokens.end());
-						block->add_node(node);
+						if(node)
+							block->add_node(node);
 					}
 				}
 				ptr->add_block(block);
@@ -326,6 +329,7 @@ namespace cpptemplate {
 			case Token::EXPRESSION: ptr = std::make_shared<ExpressionNode>(it->args[0]); it++; break;
 			case Token::CONDITIONAL: ptr = BuildConditionNode(it, end); break;
 			case Token::BLOCK_PARENT: ptr = std::make_shared<BlockParentCallNode>(it->args[0]); it++; break;
+			case Token::COMMENT: it++; break; // Ignore comments
 			default:
 				throw std::runtime_error("Unknown block:" + std::to_string((int)it->type));
 		}
@@ -343,7 +347,9 @@ namespace cpptemplate {
 				it++;
 				break;
 			}
-			nodes.push_back(BuildNode(it, end));
+			auto node = BuildNode(it, end);
+			if(node)
+				nodes.push_back(node);
 		}
 		ptr->set_nodes(nodes);
 		return ptr;
@@ -379,7 +385,8 @@ namespace cpptemplate {
 				it++;
 			} else {
 				auto node = BuildNode(it, end);
-				nodes.push_back(node);
+				if(node)
+					nodes.push_back(node);
 			}
 		}
 		return ptr;
@@ -443,8 +450,11 @@ namespace cpptemplate {
 		auto ast = BuildAST(tokens);
 		ast->set_filename(fname);
 		if(ast->get_classname().empty()) {
-			auto parts = split(fname, ".");
-			if(!parts.empty()) ast->set_classname(parts[0]);
+			auto parts = split(fname, "/");
+			if(!parts.empty()) {
+				parts = split(parts.back(), ".");
+				if(!parts.empty()) ast->set_classname(parts[0]);
+			}
 		}
 		if(!ast->is_base_ast()) {
 			auto ext = std::dynamic_pointer_cast<ExtendingTemplateAST>(ast);
@@ -453,7 +463,7 @@ namespace cpptemplate {
 				auto fnameparts = split(fname, "/", true);
 				if(fnameparts.empty()) throw std::runtime_error("invalid template filename");
 				fnameparts.erase(fnameparts.begin() + fnameparts.size() - 1); // Remove filename
-				extname = join("/", fnameparts) + extname;
+				extname = join("/", fnameparts) + "/" + extname;
 			}
 			ext->set_base_template_ast(ParseFile(extname));
 		}

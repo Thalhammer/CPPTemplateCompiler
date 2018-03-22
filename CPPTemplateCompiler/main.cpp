@@ -1,5 +1,6 @@
 #include "Generator.h"
 #include "Parser.h"
+#include "StringHelper.h"
 #include <iostream>
 #include <fstream>
 
@@ -22,8 +23,12 @@ int main(int argc, const char** const argv) {
 	if(options.dump_only) {
 		cpptemplate::Parser::DumpAST(std::cout, ast);
 	} else {
-		if(options.output_filename.empty())
-			options.output_filename = ast->get_classname();
+		if(options.output_filename.empty()) {
+			auto parts = split(options.template_filename, "/");
+			parts.erase(parts.begin() + parts.size() -1);
+			parts.push_back(ast->get_classname());
+			options.output_filename = join("/", parts);
+		}
 		
 		std::ofstream header(options.output_filename + ".h", std::ios::binary);
 		std::ofstream impl(options.output_filename + ".cpp", std::ios::binary);

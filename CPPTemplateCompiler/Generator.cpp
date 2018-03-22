@@ -155,6 +155,7 @@ namespace cpptemplate {
 		}
 		if(ast->is_base_ast()) {
 			impl << "#include <chrono>" << std::endl;
+			impl << "#include <stdexcept>" << std::endl;
 		}
 		impl << "#include <typeinfo>" << std::endl;
 
@@ -294,7 +295,11 @@ namespace cpptemplate {
 		const static std::string TAB = "\t";
 		std::ostringstream header;
 		header << "#pragma once" << std::endl;
-		if(baseast) header << "#include \"" << baseast->get_classname() << ".h\"" << std::endl;
+		if(baseast) {
+			auto parts = split(std::dynamic_pointer_cast<ExtendingTemplateAST>(ast)->get_base_template(), "/");
+			parts.back() = baseast->get_classname() + ".h";
+			header << "#include \"" << join("/", parts) << "\"" << std::endl;
+		}
 		for (auto& incl : ast->get_header_includes()) {
 			header << "#include " << incl << std::endl;
 		}
