@@ -3,6 +3,7 @@
 
 namespace cpptemplate {
 	class Generator {
+		static std::string BuildParamsBlock(ASTPtr ast);
 		static std::string SanitizePlainText(const std::string& str);
 		static NodePtr ReplaceMacros(NodePtr n, ASTPtr ast);
 		static std::string BuildActionRender(std::vector<NodePtr> nodes, ASTPtr ast, ASTPtr baseast, const std::string& cblock = "", size_t nindent = 0);

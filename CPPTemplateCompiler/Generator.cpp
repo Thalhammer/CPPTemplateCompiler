@@ -11,6 +11,27 @@
 #endif
 
 namespace cpptemplate {
+	std::string Generator::BuildParamsBlock(ASTPtr ast)
+	{
+		std::string res;
+		if(ast->is_base_ast()) {
+			for(auto& p : ast->get_parameters()) {
+				res += "\tauto& " + p->get_name() + " = p." + p->get_name() + "; (void)" + p->get_name() + ";\n";
+			}
+		} else {
+			ASTPtr base = ast;
+			while(base) {
+				if(!base->get_parameters().empty())
+					res += "\t// Params of base template " + base->get_classname() +"\n";
+				for(auto& p : base->get_parameters()) {
+					res += "\tauto& " + p->get_name() + " = static_cast<params&>(p)." + p->get_name() + "; (void)" + p->get_name() + ";\n";
+				}
+				base = base->is_base_ast() ? nullptr : std::dynamic_pointer_cast<ExtendingTemplateAST>(base)->get_base_template_ast();
+			}
+		}
+		return res;
+	}
+
 	std::string Generator::SanitizePlainText(const std::string& str)
 	{
 		std::string res;
@@ -204,7 +225,7 @@ namespace cpptemplate {
 			impl << "{" << std::endl;
 			impl << TAB << "if(typeid(p) != get_param_type()) throw std::invalid_argument(\"invalid param struct\");" << std::endl;
 			for(auto& p : ast->get_parameters()) {
-				impl << TAB << "auto& " << p->get_name() << " = p." << p->get_name() << ";" << std::endl;
+				impl << TAB << "auto& " << p->get_name() << " = p." << p->get_name() << "; (void)" << p->get_name() << ";" << std::endl;
 			}
 			impl << TAB << "this->prerender(p);" << std::endl;
 
@@ -224,6 +245,7 @@ namespace cpptemplate {
 		impl << "void " << ast->get_classname() << "::prerender(base_params& p) const" << std::endl;
 		impl << "{" << std::endl;
 		{
+			impl << BuildParamsBlock(ast);
 			auto code = ast->get_codeblock("prerender");
 			if(code) {
 				std::istringstream iss(code->get_code());
@@ -236,6 +258,7 @@ namespace cpptemplate {
 		impl << "void " << ast->get_classname() << "::postrender(base_params& p) const" << std::endl;
 		impl << "{" << std::endl;
 		{
+			impl << BuildParamsBlock(ast);
 			auto code = ast->get_codeblock("postrender");
 			if(code) {
 				std::istringstream iss(code->get_code());
@@ -248,15 +271,8 @@ namespace cpptemplate {
 		for (auto& e : ast->get_blocks()) {
 			impl << "void " << ast->get_classname() << "::renderBlock_" << e->get_name() << "(std::string& str, base_params& p) const" << std::endl;
 			impl << "{" << std::endl;
-			if(ast->is_base_ast()) {
-				for(auto& p : ast->get_parameters()) {
-					impl << TAB << "auto& " << p->get_name() << " = p." << p->get_name() << ";" << std::endl;
-				}
-			} else {
-				for(auto& p : ast->get_parameters()) {
-					impl << TAB << "auto& " << p->get_name() << " = dynamic_cast<params&>(p)." << p->get_name() << ";" << std::endl;
-				}
-			}
+			
+			impl << BuildParamsBlock(ast);
 
 			impl << BuildActionRender(e->get_nodes(), ast, baseast, e->get_name(), 1);
 
@@ -312,11 +328,11 @@ namespace cpptemplate {
 		}
 		header << "class " << ast->get_classname();
 		if(!baseast) header << std::endl;
-		else header << " : public " << baseast->get_classname() << std::endl;
+		else header << " : public ::" << baseast->get_namespace() << "::" << baseast->get_classname() << std::endl;
 		header << "{" << std::endl;
 		header << TAB << "public:" << std::endl;
 		if(baseast && ast->get_parameters().empty()) {
-			header << TAB << TAB << "typedef struct " << baseast->get_classname() << "::params params;" << std::endl;
+			header << TAB << TAB << "typedef ::" << baseast->get_namespace() << "::" << baseast->get_classname() << "::params params;" << std::endl;
 		} else{
 			header << TAB << TAB << "struct params" << std::endl;
 			if(baseast) header << TAB << TAB << TAB << ": " << baseast->get_classname() << "::params" << std::endl;
@@ -356,7 +372,8 @@ namespace cpptemplate {
 			header << TAB << TAB << "virtual void renderBlock_" << a->get_name() << "(std::string& str, base_params& p) const;" << std::endl;
 		}
 
-		header << TAB << TAB << "static std::string strlocaltime(time_t time, const char* fmt);" << std::endl;
+		if(ast->is_base_ast())
+			header << TAB << TAB << "static std::string strlocaltime(time_t time, const char* fmt);" << std::endl;
 
 		header << "};" << std::endl;
 		
