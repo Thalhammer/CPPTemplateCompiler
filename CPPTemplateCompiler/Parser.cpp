@@ -69,7 +69,7 @@ namespace cpptemplate {
 						}
 						else {
 							std::string plain = sline.substr(offset, pos - offset);
-							tokens.push_back({ Token::APPENDSTRING, { plain + "\n" }, cnt_line, offset });
+							tokens.push_back({ Token::APPENDSTRING, { plain }, cnt_line, offset });
 						}
 					}
 					if (is_cmd) {
