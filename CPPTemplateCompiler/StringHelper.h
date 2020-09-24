@@ -54,14 +54,14 @@ static inline std::vector<std::string> split(const std::string& s, const std::st
 	size_t offset = 0;
 	while (pos != std::string::npos) {
 		auto elem = s.substr(offset, pos - offset);
-		if (!elem.empty() || !remove_empty)
+		if(!(elem.empty() && remove_empty))
 			res.push_back(elem);
 		offset = pos + search.size();
 		pos = s.find(search, offset);
 	};
 
 	std::string last = s.substr(offset, pos - offset);
-	if (!last.empty() || !remove_empty)
+	if(!(last.empty() && remove_empty))
 		res.push_back(last);
 	return res;
 }
@@ -73,9 +73,8 @@ static inline std::string join(const std::string& delim, const std::vector<std::
 		len = parts.size();
 	auto max = std::min(parts.size(), offset + len);
 	for (size_t i = offset; i < max; i++) {
+		if(i != 0) res += delim;
 		res += parts[i];
-		if (i != parts.size() - 1)
-			res += delim;
 	}
 	return res;
 }

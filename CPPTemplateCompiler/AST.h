@@ -36,9 +36,9 @@ namespace cpptemplate {
 	typedef std::shared_ptr<ExtendingTemplateAST> ExtendingTemplateASTPtr;
 
 	class Variable {
-		std::string name;
-		std::string function_name;
-		std::string type;
+		std::string name {};
+		std::string function_name {};
+		std::string type {};
 	public:
 		Variable() {}
 		Variable(std::string n, std::string fn, std::string t)
@@ -53,8 +53,8 @@ namespace cpptemplate {
 		void set_type(std::string s) { type = std::move(s); }
 	};
 	class Parameter {
-		std::string name;
-		std::string type;
+		std::string name {};
+		std::string type {};
 	public:
 		Parameter() {}
 		Parameter(std::string n, std::string t)
@@ -67,8 +67,8 @@ namespace cpptemplate {
 		void set_type(std::string s) { type = std::move(s); }
 	};
 	class CodeBlock {
-		std::string name;
-		std::string code;
+		std::string name {};
+		std::string code {};
 	public:
 		const std::string& get_name() const { return name; }
 		void set_name(std::string s) { name = std::move(s); }
@@ -86,9 +86,10 @@ namespace cpptemplate {
 	class Node {
 	public:
 		virtual NodeType get_type() const = 0;
+		virtual ~Node() {}
 	};
 	class AppendStringNode: public Node {
-		std::string data;
+		std::string data {};
 	public:
 		AppendStringNode() {}
 		AppendStringNode(std::string str) : data(std::move(str)) {}
@@ -97,9 +98,9 @@ namespace cpptemplate {
 		void set_data(std::string d) { data = std::move(d); }
 	};
 	class ForEachLoopNode: public Node {
-		std::string source;
-		std::string varname;
-		std::vector<NodePtr> nodes;
+		std::string source {};
+		std::string varname {};
+		std::vector<NodePtr> nodes {};
 	public:
 		NodeType get_type() const override { return NodeType::ForEachLoop; }
 		const std::string& get_source() const { return source; }
@@ -110,7 +111,7 @@ namespace cpptemplate {
 		void set_nodes(std::vector<NodePtr> n) { nodes = std::move(n); }
 	};
 	class ExpressionNode: public Node {
-		std::string code;
+		std::string code {};
 	public:
 		ExpressionNode() {}
 		ExpressionNode(std::string c) : code(std::move(c)) {}
@@ -119,8 +120,8 @@ namespace cpptemplate {
 		void set_code(std::string d) { code = std::move(d); }
 	};
 	class ConditionNode: public Node {
-		std::vector<std::pair<std::string, std::vector<NodePtr>>> branches;
-		std::vector<NodePtr> branch_else;
+		std::vector<std::pair<std::string, std::vector<NodePtr>>> branches {};
+		std::vector<NodePtr> branch_else {};
 	public:
 		NodeType get_type() const override { return NodeType::Conditional; }
 		void set_else(std::vector<NodePtr> nodes) { branch_else = std::move(nodes); }
@@ -131,14 +132,14 @@ namespace cpptemplate {
 		const std::vector<NodePtr>& get_else_branch() const { return branch_else; }
 	};
 	class BlockCallNode: public Node {
-		std::string block;
+		std::string block {};
 	public:
 		NodeType get_type() const override { return NodeType::BlockCall; }
 		void set_block(std::string b) { block = b; }
 		const std::string& get_block() const { return block; }
 	};
 	class BlockParentCallNode: public Node {
-		std::string block;
+		std::string block {};
 	public:
 		BlockParentCallNode() {}
 		BlockParentCallNode(std::string s) : block(s) {}
@@ -147,8 +148,8 @@ namespace cpptemplate {
 		const std::string& get_block() const { return block; }
 	};
 	class Block {
-		std::string name;
-		std::vector<NodePtr> nodes;
+		std::string name {};
+		std::vector<NodePtr> nodes {};
 	public:
 		const std::string& get_name() const { return name; }
 		void set_name(std::string n) { name = std::move(n); }
@@ -157,15 +158,15 @@ namespace cpptemplate {
 		void set_nodes(std::vector<NodePtr> n) { nodes = n;}
 	};
 	class AST {
-		std::string filename;
-		std::string classname;
-		std::string t_namespace;
-		std::vector<VariablePtr> variables;
-		std::vector<ParameterPtr> parameters;
-		std::vector<BlockPtr> blocks;
-		std::vector<CodeBlockPtr> codeblocks;
-		std::set<std::string> header_includes;
-		std::set<std::string> impl_includes;
+		std::string filename {};
+		std::string classname {};
+		std::string t_namespace {};
+		std::vector<VariablePtr> variables {};
+		std::vector<ParameterPtr> parameters {};
+		std::vector<BlockPtr> blocks {};
+		std::vector<CodeBlockPtr> codeblocks {};
+		std::set<std::string> header_includes {};
+		std::set<std::string> impl_includes {};
 	public:
 		void add_block(BlockPtr b) { blocks.push_back(b); }
 		void add_parameter(ParameterPtr p) { parameters.push_back(p); }
@@ -195,9 +196,10 @@ namespace cpptemplate {
 		void set_classname(std::string f) { classname = std::move(f); }
 
 		virtual bool is_base_ast() const = 0;
+		virtual ~AST() {}
 	};
 	class BaseTemplateAST : public AST {
-		std::vector<NodePtr> nodes;
+		std::vector<NodePtr> nodes {};
 	public:
 		const std::vector<NodePtr>& get_nodes() const { return nodes; }
 		void set_nodes(std::vector<NodePtr> n) { nodes = std::move(n); }
@@ -205,8 +207,8 @@ namespace cpptemplate {
 		virtual bool is_base_ast() const { return true; }
 	};
 	class ExtendingTemplateAST : public AST {
-		std::string base_template;
-		ASTPtr base_ast;
+		std::string base_template {};
+		ASTPtr base_ast {};
 	public:
 		void set_base_template(const std::string& bt) { base_template = bt; }
 		const std::string& get_base_template() const { return base_template; }

@@ -460,7 +460,7 @@ namespace cpptemplate {
 			auto ext = std::dynamic_pointer_cast<ExtendingTemplateAST>(ast);
 			std::string extname = ext->get_base_template();
 			if(!startsWith(extname, "/")) {
-				auto fnameparts = split(fname, "/", true);
+				auto fnameparts = split(fname, "/", false);
 				if(fnameparts.empty()) throw std::runtime_error("invalid template filename");
 				fnameparts.erase(fnameparts.begin() + fnameparts.size() - 1); // Remove filename
 				extname = join("/", fnameparts) + "/" + extname;
@@ -472,6 +472,7 @@ namespace cpptemplate {
 
 	ASTPtr Parser::ParseFile(const std::string& fname) {
 		std::ifstream str(fname, std::ios::binary);
+		if(!str) throw std::runtime_error("failed to open file");
 		return ParseStream(str, fname);
 	}
 

@@ -3,10 +3,17 @@
 #include "StringHelper.h"
 #include <iostream>
 #include <fstream>
+#ifdef WITH_FS
+#include <filesystem>
+namespace fs = std::filesystem;
+#elif WITH_FS_EXP
+#include <experimental/filesystem>
+namespace fs = std::experimental::filesystem;
+#endif
 
 struct cmd_options {
-	std::string template_filename;
-	std::string output_filename;
+	std::string template_filename {};
+	std::string output_filename {};
 	bool dump_only = false;
 	bool print_help = false;
 
@@ -14,7 +21,7 @@ struct cmd_options {
 static std::string ParseCommandLine(int argc, const char** const argv, cmd_options& options);
 static void PrintHelp();
 
-int main(int argc, const char** const argv) {
+int main(int argc, const char** const argv) try {
 	cmd_options options;
 	auto err = ParseCommandLine(argc, argv, options);
 	if(!err.empty()) {
@@ -35,6 +42,12 @@ int main(int argc, const char** const argv) {
 			parts.push_back(ast->get_classname());
 			options.output_filename = join("/", parts);
 		}
+
+		auto dir = options.output_filename;
+		dir = dir.substr(0, dir.find_last_of('/'));
+		if(!dir.empty()) {
+			fs::create_directories(dir);
+		}
 		
 		std::ofstream header(options.output_filename + ".h", std::ios::binary);
 		std::ofstream impl(options.output_filename + ".cpp", std::ios::binary);
@@ -47,6 +60,9 @@ int main(int argc, const char** const argv) {
 		header.close();
 		impl.close();
 	}
+} catch(const std::exception& e) {
+	std::cerr << "Error during execution: " << e.what() << std::endl;
+	return -1;
 }
 
 static std::string ParseCommandLine(int argc, const char** const argv, cmd_options& options) {
