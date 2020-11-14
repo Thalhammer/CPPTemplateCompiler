@@ -242,7 +242,7 @@ namespace cpptemplate {
 		impl << "}" << std::endl;
 		impl << std::endl;
 
-		impl << "void " << ast->get_classname() << "::prerender(base_params& p) const" << std::endl;
+		impl << "void " << ast->get_classname() << "::prerender(base_params& p __attribute__((unused))) const" << std::endl;
 		impl << "{" << std::endl;
 		{
 			impl << BuildParamsBlock(ast);
@@ -255,7 +255,7 @@ namespace cpptemplate {
 		impl << "}" << std::endl;
 		impl << std::endl;
 
-		impl << "void " << ast->get_classname() << "::postrender(base_params& p) const" << std::endl;
+		impl << "void " << ast->get_classname() << "::postrender(base_params& p __attribute__((unused))) const" << std::endl;
 		impl << "{" << std::endl;
 		{
 			impl << BuildParamsBlock(ast);
@@ -269,7 +269,7 @@ namespace cpptemplate {
 		impl << std::endl;
 
 		for (auto& e : ast->get_blocks()) {
-			impl << "void " << ast->get_classname() << "::renderBlock_" << e->get_name() << "(std::string& str, base_params& p) const" << std::endl;
+			impl << "void " << ast->get_classname() << "::renderBlock_" << e->get_name() << "(std::string& str __attribute__((unused)), base_params& p __attribute__((unused))) const" << std::endl;
 			impl << "{" << std::endl;
 			
 			impl << BuildParamsBlock(ast);
