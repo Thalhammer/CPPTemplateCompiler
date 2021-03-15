@@ -43,12 +43,12 @@ target_include_directories(cpptemplate
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-try_compile(HAS_FS "${CMAKE_BINARY_DIR}/temp" 
-    "${CMAKE_SOURCE_DIR}/cmake/tests/has_fs.cpp" 
+try_compile(HAS_FS "${CMAKE_CURRENT_BINARY_DIR}/temp" 
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/tests/has_fs.cpp" 
     CMAKE_FLAGS -DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON
     LINK_LIBRARIES stdc++fs)
-try_compile(HAS_FS_EXP "${CMAKE_BINARY_DIR}/temp" 
-    "${CMAKE_SOURCE_DIR}/cmake/tests/has_fs_exp.cpp" 
+try_compile(HAS_FS_EXP "${CMAKE_CURRENT_BINARY_DIR}/temp" 
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/tests/has_fs_exp.cpp" 
     CMAKE_FLAGS -DCMAKE_CXX_STANDARD=17 -DCMAKE_CXX_STANDARD_REQUIRED=ON
     LINK_LIBRARIES stdc++fs)
 if(HAS_FS)
