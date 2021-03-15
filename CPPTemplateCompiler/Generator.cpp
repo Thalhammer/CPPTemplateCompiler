@@ -340,7 +340,7 @@ namespace cpptemplate {
 			if(ast->is_base_ast()) // We need a virtual method for typeid to return the correct type
 				header << TAB << TAB << TAB << "virtual ~params() {}" << std::endl;
 			for (auto& param : ast->get_parameters()) {
-				header << TAB << TAB << TAB << param->get_type() << " " << param->get_name() << ";" << std::endl;
+				header << TAB << TAB << TAB << param->get_type() << " " << param->get_name() << " {};" << std::endl;
 			}
 			header << TAB << TAB << "};" << std::endl;
 		}
@@ -360,7 +360,7 @@ namespace cpptemplate {
 		}
 		header << TAB << "protected:" << std::endl;
 		for (auto& var : ast->get_variables()) {
-			header << TAB << TAB << var->get_type() << " " << var->get_name() << "; // " << var->get_function_name() << std::endl;
+			header << TAB << TAB << var->get_type() << " " << var->get_name() << " {}; // " << var->get_function_name() << std::endl;
 		}
 		header << std::endl;
 		// Code handlers
